@@ -102,7 +102,9 @@ class FireflyBot(
 
 class VitalArticlesBot(FireflyBot):
 
-    assessment_order = ["fa", "fl", "a", "ga", "bplus", "b", "c", "start", "stub", "list", "unassessed"]
+    assessment_order = ["fa", "fl", "a", "ga", "bplus", "b", "c", "start", "stub", "dab", "list", "unassessed"]
+    
+    no_replace_list = ["dga", "ffa", "ffac"]
 
     # Gets the article's assessment. If the page has multiple different assessments
     # then the HIGHEST assessment is used
@@ -113,22 +115,30 @@ class VitalArticlesBot(FireflyBot):
             return ass.split("<!")[0].strip()  # Gets rid of <!-- HTML comments -->
 
         assessments = []
-        talk_page = pywikibot.Page(self.site, "Talk:{}".format(page_title))
-
-        # Pesky redirects
-        if talk_page.isRedirectPage():
-            talk_page = talk_page.getRedirectTarget()
-
+        article_page = pywikibot.Page(self.site, page_title)
+        
+         # Pesky redirects
+        if article_page.isRedirectPage():
+            talk_page = pywikibot.Page(self.site, "Talk:{}".format(article_page.getRedirectTarget().title()))
+        else:
+            talk_page = pywikibot.Page(self.site, "Talk:{}".format(page_title))
+        
         talk_wikicode = mwparserfromhell.parse(talk_page.text)
+        
         for template in talk_wikicode.filter_templates():
-            if template.name.startswith("WikiProject"):
-                try:
-                    assessments.append(sanitise_assessment(template.get("class").split("=")[1]))
-                except ValueError:  # The WikiProject template may not have an assessment parameter
-                    continue  # Skip to the next one
+            template_name_lower = template.name.lower()
+            try:
+                assessment = sanitise_assessment(template.get("class").split("=")[1])
+                if assessment in self.assessment_order:  # Reject invalid assessment classes (e.g. if someone has vandalised the template)
+                    assessments.append(assessment)
+            except ValueError:  # The WikiProject template may not have an assessment parameter
+                continue  # Skip to the next one
 
         if len(assessments) == 0:
-            return ""
+            if "WikiProject Disambiguation" in talk_page.text:
+                return "dab"
+            else:
+                return "unassessed"
         elif len(assessments) > 1:
             assessments.sort(key=lambda x: self.assessment_order.index(x) if x in self.assessment_order else 255)
         return assessments[0]
@@ -154,7 +164,7 @@ class VitalArticlesBot(FireflyBot):
             article_count = section.count("\n#")
             old_header_match = re.match(r"(=+)\s*(.+?)\s*\(([0-9,]+) articles?\)\s*=+", str(section))
             old_header_groups = old_header_match.groups()
-            new_header = "{0} {1} ({2} article{3}) {0}".format(old_header_groups[0],
+            new_header = "{0}{1} ({2} article{3}){0}".format(old_header_groups[0],
                                                                 old_header_groups[1],
                                                                 article_count,
                                                                 "" if article_count == 1 else "s")
@@ -162,7 +172,7 @@ class VitalArticlesBot(FireflyBot):
             section.replace(old_header_match.group(0), new_header)
 
         # Add all the top-level headings together for the 'total articles' count
-        total_count = -1
+        total_count = 0
         for i in range(1,10):
             top_level_sections = wikicode.get_sections(levels=[i])
             if len(top_level_sections) > 0:
@@ -187,9 +197,12 @@ class VitalArticlesBot(FireflyBot):
                 print("Getting assessment for {}: {}".format(self.get_article_link(line), article_assessment))
                 for item in line:
                     if "{{" in item:
-                        if item.get("1").lower() != article_assessment:  # Don't just change capitalisation
+                        existing_assessment = item.get("1").lower()
+                        if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list:  # Don't just change capitalisation, don't replace DGA or FFA
                             item.add("1", article_assessment)
-                        break  # Only process the first template, don't mess with the FFA or DGA ones (yet)
+                        if (existing_assessment == "dga" and article_assessment == "ga") or \
+                            (existing_assessment == "ffa" and article_assessment == "fa"):  # Remove DGA template if article is now a GA / FFA if FA
+                            wikicode.remove(item)
 
         # Save the updated text to the page
         self.put_current(str(wikicode),
