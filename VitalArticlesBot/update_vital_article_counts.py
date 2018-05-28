@@ -112,6 +112,10 @@ class VitalArticlesBot(FireflyBot):
     assessment_order = ["fa", "fl", "a", "ga", "bplus", "b", "c", "start", "stub", "dab", "list", "unassessed"]
     
     no_replace_list = ["dga", "ffa", "ffac"]
+    
+    dga_templates = ["dga", "delistedga"]
+    
+    article_history_templates = ["article history", "articlehistory", "articlemilestones", "ah"]
 
     def __init__(self, generator, **kwargs):
         # call constructor of the super class
@@ -137,8 +141,23 @@ class VitalArticlesBot(FireflyBot):
         
         talk_wikicode = mwparserfromhell.parse(talk_page.text)
         
+        is_dga = False
+        is_ffa = False
+        
         for template in talk_wikicode.filter_templates():
             template_name_lower = template.name.lower()
+            
+            if template_name_lower in self.dga_templates:
+                is_dga = True
+            elif template_name_lower in self.article_history_templates:
+                try:
+                    cur_status = template.get("currentstatus").split("=")[1].strip()
+                    is_dga = cur_status.lower() == "dga"
+                    is_ffa = cur_status.lower() == "ffa"
+                except ValueError:
+                    pass
+                continue
+            
             try:
                 assessment = sanitise_assessment(template.get("class").split("=")[1])
                 if assessment in self.assessment_order:  # Reject invalid assessment classes (e.g. if someone has vandalised the template)
@@ -148,12 +167,12 @@ class VitalArticlesBot(FireflyBot):
 
         if len(assessments) == 0:
             if "WikiProject Disambiguation" in talk_page.text:
-                return "dab"
+                return "dab", False, False
             else:
-                return "unassessed"
+                return "unassessed", False, False
         elif len(assessments) > 1:
             assessments.sort(key=lambda x: self.assessment_order.index(x) if x in self.assessment_order else 255)
-        return assessments[0]
+        return assessments[0], is_dga, is_ffa
 
     # The relevant article will be the first link in a line
     @staticmethod
@@ -222,19 +241,34 @@ class VitalArticlesBot(FireflyBot):
                 article_title = self.get_article_link(line)
                 if article_title is None or "Wikipedia:" in article_title or "Category:" in article_title or "User:" in article_title or "Template:" in article_title or "Portal:" in article_title:
                     continue
-                article_assessment = self.get_vital_article_quality(article_title)
-                print("Getting assessment for {}: {}".format(article_title, article_assessment))
+                article_assessment, is_dga, is_ffa = self.get_vital_article_quality(article_title)
+                print("Getting assessment for {}: {}, {}, {}".format(article_title, article_assessment, is_dga, is_ffa))
+                
+                count = 0
+                dga_found = False
+                ffa_found = False
+                first_templ = None
                 for item in line:
-                    if "{{icon" in item:
+                    if "{{icon" in item.lower():
+                        first_templ = item
                         try:
                             existing_assessment = item.get("1").lower()
                         except ValueError:  # Template may not have parameters
                             continue
-                        if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list:  # Don't just change capitalisation, don't replace DGA or FFA
+                        if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list and count < 1:  # Don't just change capitalisation, don't replace DGA or FFA
                             item.add("1", article_assessment)
-                        if (existing_assessment == "dga" and article_assessment == "ga") or \
-                            (existing_assessment == "ffa" and article_assessment == "fa"):  # Remove DGA template if article is now a GA / FFA if FA
+                        dga_found |= (existing_assessment == "dga")
+                        ffa_found |= (existing_assessment == "ffa")
+                        
+                        if (dga_found and article_assessment == "ga") or \
+                            (ffa_found and article_assessment == "fa"):  # Remove DGA template if article is now a GA / FFA if FA
                             wikicode.remove(item)
+                        count += 1
+                
+                if (is_dga and not dga_found):
+                    wikicode.insert_after(first_templ, " {{icon|dga}}")
+                if (is_ffa and not ffa_found):
+                    wikicode.insert_after(first_templ, " {{icon|ffa}}")
 
         if (self.check_task_switch_is_on()):
             # Save the updated text to the page
