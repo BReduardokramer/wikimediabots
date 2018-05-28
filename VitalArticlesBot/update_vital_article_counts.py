@@ -110,17 +110,20 @@ class FireflyBot(
 class VitalArticlesBot(FireflyBot):
 
     assessment_order = ["fa", "fl", "a", "ga", "bplus", "b", "c", "start", "stub", "dab", "list", "unassessed"]
-    
     no_replace_list = ["dga", "ffa", "ffac"]
-    
     dga_templates = ["dga", "delistedga"]
-    
     article_history_templates = ["article history", "articlehistory", "articlemilestones", "ah"]
+    skip_assessment = False
 
     def __init__(self, generator, **kwargs):
+        self.availableOptions.update({
+                'skipassessment': False,
+        })
+
         # call constructor of the super class
         super(VitalArticlesBot, self).__init__(generator, **kwargs)
         self.task_number = 9
+        self.skip_assessment = self.options.get("skipassessment")
     
     # Gets the article's assessment. If the page has multiple different assessments
     # then the HIGHEST assessment is used
@@ -196,7 +199,7 @@ class VitalArticlesBot(FireflyBot):
             article_count = section.count("# {{Icon")
             if article_count == 0:
                 article_count = section.count("* {{Icon")
-            old_header_match = re.match(r"(=+)\s*(.+?)\s*[\(:]\s*?([0-9,]+)\w*(/\w*[0-9,]+)? article(?:s| quota)?\)?\s*=+", str(section))
+            old_header_match = re.match(r"(=+)\s*(.+?)\s*[\(:]\s*?([0-9,]+)\s*(?:articles?)?\s*(/\s*[0-9,]+)?\s*(?:articles?| quota)?\)?\s*=+", str(section))
             has_quota = "quota" in str(section)
             if old_header_match is None:
                 continue
@@ -208,6 +211,7 @@ class VitalArticlesBot(FireflyBot):
                                                                 old_header_groups[3] if len(old_header_groups) > 3 and old_header_groups[3] is not None else "",
                                                                 " quota" if has_quota else "")
 
+            new_header = new_header.replace("article quota", "quota")
             section.replace(old_header_match.group(0), new_header)
 
         # Add all the top-level headings together for the 'total articles' count
@@ -217,7 +221,7 @@ class VitalArticlesBot(FireflyBot):
             if len(top_level_sections) > 0:
                 for section in top_level_sections:
                     heading = str(section.filter_headings()[0])
-                    heading_match = re.search(r"([0-9,]+)\w*(/\w*[0-9,]+)? article(?:s| quota)?\)", heading)
+                    heading_match = re.search(r"([0-9,]+)\s*(?:articles?)?\s*(/\s*[0-9,]+)?\s*(?:articles?| quota)?\)", heading)
                     if heading_match is None:
                         continue
                     total_count += int(heading_match.group(1))
@@ -232,48 +236,49 @@ class VitalArticlesBot(FireflyBot):
                     denominator = "/{}".format(param.split("/")[-1].strip("'"))
                 template.add("1", "Total articles: {}{}".format(total_count, denominator))
 
-        # Split article into individual lines
-        line_list = [list(group) for k, group in groupby(wikicode.filter(), lambda x: "\n" in x) if not k]
+        if not self.skip_assessment:
+            # Split article into individual lines
+            line_list = [list(group) for k, group in groupby(wikicode.filter(), lambda x: "\n" in x) if not k]
 
-        # Process each line, looking for article links, then check their assessment
-        for line in line_list:
-            if line[0] == "#" or line[0] == "*":
-                article_title = self.get_article_link(line)
-                if article_title is None or "Wikipedia:" in article_title or "Category:" in article_title or "User:" in article_title or "Template:" in article_title or "Portal:" in article_title:
-                    continue
-                article_assessment, is_dga, is_ffa = self.get_vital_article_quality(article_title)
-                print("Getting assessment for {}: {}, {}, {}".format(article_title, article_assessment, is_dga, is_ffa))
-                
-                count = 0
-                dga_found = False
-                ffa_found = False
-                first_templ = None
-                for item in line:
-                    if "{{icon" in item.lower():
-                        first_templ = item
-                        try:
-                            existing_assessment = item.get("1").lower()
-                        except ValueError:  # Template may not have parameters
-                            continue
-                        if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list and count < 1:  # Don't just change capitalisation, don't replace DGA or FFA
-                            item.add("1", article_assessment)
-                        dga_found |= (existing_assessment == "dga")
-                        ffa_found |= (existing_assessment == "ffa")
-                        
-                        if (dga_found and article_assessment == "ga") or \
-                            (ffa_found and article_assessment == "fa"):  # Remove DGA template if article is now a GA / FFA if FA
-                            wikicode.remove(item)
-                        count += 1
-                
-                if (is_dga and not dga_found):
-                    wikicode.insert_after(first_templ, " {{icon|dga}}")
-                if (is_ffa and not ffa_found):
-                    wikicode.insert_after(first_templ, " {{icon|ffa}}")
+            # Process each line, looking for article links, then check their assessment
+            for line in line_list:
+                if line[0] == "#" or line[0] == "*":
+                    article_title = self.get_article_link(line)
+                    if article_title is None or "Wikipedia:" in article_title or "Category:" in article_title or "User:" in article_title or "Template:" in article_title or "Portal:" in article_title:
+                        continue
+                    article_assessment, is_dga, is_ffa = self.get_vital_article_quality(article_title)
+                    print("Getting assessment for {}: {}, {}, {}".format(article_title, article_assessment, is_dga, is_ffa))
+                    
+                    count = 0
+                    dga_found = False
+                    ffa_found = False
+                    first_templ = None
+                    for item in line:
+                        if "{{icon" in item.lower():
+                            first_templ = item
+                            try:
+                                existing_assessment = item.get("1").lower()
+                            except ValueError:  # Template may not have parameters
+                                continue
+                            if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list and count < 1:  # Don't just change capitalisation, don't replace DGA or FFA
+                                item.add("1", article_assessment)
+                            dga_found |= (existing_assessment == "dga")
+                            ffa_found |= (existing_assessment == "ffa")
+                            
+                            if (dga_found and article_assessment == "ga") or \
+                                (ffa_found and article_assessment == "fa"):  # Remove DGA template if article is now a GA / FFA if FA
+                                wikicode.remove(item)
+                            count += 1
+                    
+                    if (is_dga and not dga_found):
+                        wikicode.insert_after(first_templ, " {{icon|dga}}")
+                    if (is_ffa and not ffa_found):
+                        wikicode.insert_after(first_templ, " {{icon|ffa}}")
 
         if (self.check_task_switch_is_on()):
             # Save the updated text to the page
             self.put_current(str(wikicode),
-                            summary="([[Wikipedia:Bots/Requests for approval/Bot0612 9|BOT in trial]]) Updating section counts and WikiProject assessments")
+                            summary="([[Wikipedia:Bots/Requests for approval/Bot0612 9|BOT in trial]]) Updating section counts{}".format(" and WikiProject assessments" if not self.skip_assessment else ""))
         else:
             print("Switch for task {} is off, terminating".format(self.task_number))
             exit(1)
