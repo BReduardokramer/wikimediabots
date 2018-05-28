@@ -63,6 +63,9 @@ class FireflyBot(
             'text': 'Test',  # add this text from option. 'Test' is default
             'top': False,  # append text on top of the page
         })
+        
+        self.task_number = -1
+        self.check_page = "User:Bot0612/shutoff/{}"
 
         # call constructor of the super class
         super(FireflyBot, self).__init__(site=True, **kwargs)
@@ -73,6 +76,10 @@ class FireflyBot(
         # assign the generator to the bot
         self.generator = generator
 
+    def check_task_switch_is_on(self):
+        check_page = pywikibot.Page(self.site, self.check_page.format(self.task_number))
+        return (check_page.text.strip() == "active")
+        
     def _handle_dry_param(self, **kwargs):
         """
         Read the dry parameter and set the simulate variable instead.
@@ -106,6 +113,11 @@ class VitalArticlesBot(FireflyBot):
     
     no_replace_list = ["dga", "ffa", "ffac"]
 
+    def __init__(self, generator, **kwargs):
+        # call constructor of the super class
+        super(VitalArticlesBot, self).__init__(generator, **kwargs)
+        self.task_number = 9
+    
     # Gets the article's assessment. If the page has multiple different assessments
     # then the HIGHEST assessment is used
     def get_vital_article_quality(self, page_title):
@@ -147,12 +159,13 @@ class VitalArticlesBot(FireflyBot):
     @staticmethod
     def get_article_link(line):
         for item in line:
-            if "[[" in item:
+            if "[[" in item and "<" not in item:
                 bare_name = str(item).strip("[]'")
                 if "|" in bare_name:
                     return bare_name.split("|")[0]
                 else:
                     return bare_name
+        return None
 
     def treat_page(self):
         # Grab the page text and parse it
@@ -161,13 +174,20 @@ class VitalArticlesBot(FireflyBot):
 
         # Count the articles in each section and update the header accordingly
         for section in wikicode.get_sections(include_lead=False):
-            article_count = section.count("\n#")
-            old_header_match = re.match(r"(=+)\s*(.+?)\s*\(([0-9,]+) articles?\)\s*=+", str(section))
+            article_count = section.count("# {{Icon")
+            if article_count == 0:
+                article_count = section.count("* {{Icon")
+            old_header_match = re.match(r"(=+)\s*(.+?)\s*[\(:]\s*?([0-9,]+)\w*(/\w*[0-9,]+)? article(?:s| quota)?\)?\s*=+", str(section))
+            has_quota = "quota" in str(section)
+            if old_header_match is None:
+                continue
             old_header_groups = old_header_match.groups()
-            new_header = "{0}{1} ({2} article{3}){0}".format(old_header_groups[0],
+            new_header = "{0}{1} ({2}{4} article{3}{5}){0}".format(old_header_groups[0],
                                                                 old_header_groups[1],
                                                                 article_count,
-                                                                "" if article_count == 1 else "s")
+                                                                "" if article_count == 1 or has_quota else "s",
+                                                                old_header_groups[3] if len(old_header_groups) > 3 and old_header_groups[3] is not None else "",
+                                                                " quota" if has_quota else "")
 
             section.replace(old_header_match.group(0), new_header)
 
@@ -178,35 +198,51 @@ class VitalArticlesBot(FireflyBot):
             if len(top_level_sections) > 0:
                 for section in top_level_sections:
                     heading = str(section.filter_headings()[0])
-                    heading_match = re.search(r"\(([0-9]+) articles?\)", heading)
+                    heading_match = re.search(r"([0-9,]+)\w*(/\w*[0-9,]+)? article(?:s| quota)?\)", heading)
+                    if heading_match is None:
+                        continue
                     total_count += int(heading_match.group(1))
                 break
 
         # Update the 'total articles' count
         for template in wikicode.filter_templates():
             if template.name.matches("huge"):
-                template.add("1", "Total articles: {}".format(total_count))
+                denominator = ""
+                param = template.get("1")
+                if "/" in param:
+                    denominator = "/{}".format(param.split("/")[-1].strip("'"))
+                template.add("1", "Total articles: {}{}".format(total_count, denominator))
 
         # Split article into individual lines
         line_list = [list(group) for k, group in groupby(wikicode.filter(), lambda x: "\n" in x) if not k]
 
         # Process each line, looking for article links, then check their assessment
         for line in line_list:
-            if line[0] == "#":
-                article_assessment = self.get_vital_article_quality(self.get_article_link(line))
-                print("Getting assessment for {}: {}".format(self.get_article_link(line), article_assessment))
+            if line[0] == "#" or line[0] == "*":
+                article_title = self.get_article_link(line)
+                if article_title is None or "Wikipedia:" in article_title or "Category:" in article_title or "User:" in article_title or "Template:" in article_title or "Portal:" in article_title:
+                    continue
+                article_assessment = self.get_vital_article_quality(article_title)
+                print("Getting assessment for {}: {}".format(article_title, article_assessment))
                 for item in line:
-                    if "{{" in item:
-                        existing_assessment = item.get("1").lower()
+                    if "{{icon" in item:
+                        try:
+                            existing_assessment = item.get("1").lower()
+                        except ValueError:  # Template may not have parameters
+                            continue
                         if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list:  # Don't just change capitalisation, don't replace DGA or FFA
                             item.add("1", article_assessment)
                         if (existing_assessment == "dga" and article_assessment == "ga") or \
                             (existing_assessment == "ffa" and article_assessment == "fa"):  # Remove DGA template if article is now a GA / FFA if FA
                             wikicode.remove(item)
 
-        # Save the updated text to the page
-        self.put_current(str(wikicode),
-                            summary="(TEST) Updating section counts and WikiProject assessments")
+        if (self.check_task_switch_is_on()):
+            # Save the updated text to the page
+            self.put_current(str(wikicode),
+                            summary="([[Wikipedia:Bots/Requests for approval/Bot0612 9|BOT in trial]]) Updating section counts and WikiProject assessments")
+        else:
+            print("Switch for task {} is off, terminating".format(self.task_number))
+            exit(1)
 
 def main(*args):
     """
