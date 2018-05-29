@@ -153,7 +153,7 @@ class VitalArticlesBot(FireflyBot):
             
             if template_name_lower in self.dga_templates:
                 is_dga = True
-            elif template_name_lower in self.vital_articles_templates:
+            elif template_name_lower in self.vital_article_templates:
                 continue   # Skip these as they're rarely updated and will lead to bad assessment data
             elif template_name_lower in self.article_history_templates:
                 try:
