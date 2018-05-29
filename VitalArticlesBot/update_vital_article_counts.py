@@ -112,6 +112,7 @@ class VitalArticlesBot(FireflyBot):
     assessment_order = ["fa", "fl", "a", "ga", "bplus", "b", "c", "start", "stub", "dab", "list", "unassessed"]
     no_replace_list = ["dga", "ffa", "ffac"]
     dga_templates = ["dga", "delistedga"]
+    vital_article_templates = ["vital article", "va"]
     article_history_templates = ["article history", "articlehistory", "articlemilestones", "ah"]
     skip_assessment = False
 
@@ -152,6 +153,8 @@ class VitalArticlesBot(FireflyBot):
             
             if template_name_lower in self.dga_templates:
                 is_dga = True
+            elif template_name_lower in self.vital_articles_templates:
+                continue   # Skip these as they're rarely updated and will lead to bad assessment data
             elif template_name_lower in self.article_history_templates:
                 try:
                     cur_status = template.get("currentstatus").split("=")[1].strip()
@@ -278,7 +281,7 @@ class VitalArticlesBot(FireflyBot):
         if (self.check_task_switch_is_on()):
             # Save the updated text to the page
             self.put_current(str(wikicode),
-                            summary="([[Wikipedia:Bots/Requests for approval/Bot0612 9|BOT in trial]]) Updating section counts{}".format(" and WikiProject assessments" if not self.skip_assessment else ""))
+                            summary="([[Wikipedia:Bots/Requests for approval/Bot0612 9|BOT]]) Updating section counts{}".format(" and WikiProject assessments" if not self.skip_assessment else ""))
         else:
             print("Switch for task {} is off, terminating".format(self.task_number))
             exit(1)
