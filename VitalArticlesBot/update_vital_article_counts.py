@@ -261,7 +261,7 @@ class VitalArticlesBot(FireflyBot):
                             except ValueError:  # Template may not have parameters
                                 continue
                             if existing_assessment != article_assessment and existing_assessment not in self.no_replace_list and count < 1:  # Don't just change capitalisation, don't replace DGA or FFA
-                                item.add("1", article_assessment)
+                                item.add("1", article_assessment.title())
                             dga_found |= (existing_assessment == "dga")
                             ffa_found |= (existing_assessment == "ffa")
                             
@@ -271,9 +271,9 @@ class VitalArticlesBot(FireflyBot):
                             count += 1
                     
                     if (is_dga and not dga_found):
-                        wikicode.insert_after(first_templ, " {{icon|dga}}")
+                        wikicode.insert_after(first_templ, " {{icon|DGA}}")
                     if (is_ffa and not ffa_found):
-                        wikicode.insert_after(first_templ, " {{icon|ffa}}")
+                        wikicode.insert_after(first_templ, " {{icon|FFA}}")
 
         if (self.check_task_switch_is_on()):
             # Save the updated text to the page
