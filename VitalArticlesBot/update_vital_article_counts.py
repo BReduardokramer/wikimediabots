@@ -112,19 +112,20 @@ class VitalArticlesBot(FireflyBot):
     assessment_order = ["fa", "fl", "a", "ga", "bplus", "b", "c", "start", "stub", "dab", "list", "unassessed"]
     no_replace_list = ["dga", "ffa", "ffac"]
     dga_templates = ["dga", "delistedga"]
-    vital_article_templates = ["vital article", "va"]
     article_history_templates = ["article history", "articlehistory", "articlemilestones", "ah"]
     skip_assessment = False
 
     def __init__(self, generator, **kwargs):
         self.availableOptions.update({
                 'skipassessment': False,
+                'verbose': False
         })
 
         # call constructor of the super class
         super(VitalArticlesBot, self).__init__(generator, **kwargs)
         self.task_number = 9
         self.skip_assessment = self.options.get("skipassessment")
+        self.verbose = self.options.get("verbose")
     
     # Gets the article's assessment. If the page has multiple different assessments
     # then the HIGHEST assessment is used
@@ -153,8 +154,6 @@ class VitalArticlesBot(FireflyBot):
             
             if template_name_lower in self.dga_templates:
                 is_dga = True
-            elif template_name_lower in self.vital_article_templates:
-                continue   # Skip these as they're rarely updated and will lead to bad assessment data
             elif template_name_lower in self.article_history_templates:
                 try:
                     cur_status = template.get("currentstatus").split("=")[1].strip()
@@ -250,7 +249,8 @@ class VitalArticlesBot(FireflyBot):
                     if article_title is None or "Wikipedia:" in article_title or "Category:" in article_title or "User:" in article_title or "Template:" in article_title or "Portal:" in article_title:
                         continue
                     article_assessment, is_dga, is_ffa = self.get_vital_article_quality(article_title)
-                    print("Getting assessment for {}: {}, {}, {}".format(article_title, article_assessment, is_dga, is_ffa))
+                    if self.verbose:
+                        print("Getting assessment for {}: {}, {}, {}".format(article_title, article_assessment, is_dga, is_ffa))
                     
                     count = 0
                     dga_found = False
