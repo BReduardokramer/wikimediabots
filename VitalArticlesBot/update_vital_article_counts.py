@@ -202,16 +202,21 @@ class VitalArticlesBot(FireflyBot):
             if article_count == 0:
                 article_count = section.count("* {{Icon")
             old_header_match = re.match(r"(=+)\s*(.+?)\s*[\(:]\s*?([0-9,]+)\s*(?:articles?)?\s*(/\s*[0-9,]+)?\s*(?:articles?| quota)?\)?\s*=+", str(section))
-            has_quota = "quota" in str(section)
             if old_header_match is None:
                 continue
+            old_header = old_header_match.group(0)
+            has_quota = "quota" in str(section)
             old_header_groups = old_header_match.groups()
-            new_header = "{0}{1} ({2}{4} article{3}{5}){0}".format(old_header_groups[0],
+            use_colon = "current total" in old_header.lower() and ":" in old_header
+            print(old_header)
+            new_header = "{0}{1} {6}{2}{4} article{3}{5}{7}{0}".format(old_header_groups[0],
                                                                 old_header_groups[1],
                                                                 article_count,
                                                                 "" if article_count == 1 or has_quota else "s",
                                                                 old_header_groups[3] if len(old_header_groups) > 3 and old_header_groups[3] is not None else "",
-                                                                " quota" if has_quota else "")
+                                                                " quota" if has_quota else "",
+                                                                ":" if use_colon else "(",
+                                                                "" if use_colon else ")")
 
             new_header = new_header.replace("article quota", "quota")
             section.replace(old_header_match.group(0), new_header)
