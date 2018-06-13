@@ -182,7 +182,6 @@ class G8PatrolBot(FireflyBot):
                 if "|" in bare_name:
                     return bare_name.split("|")[0]
                 else:
-        return None
                     return bare_name
 
     def treat_page(self):
