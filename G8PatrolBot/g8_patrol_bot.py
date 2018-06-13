@@ -187,7 +187,7 @@ class G8PatrolBot(FireflyBot):
     def treat_page(self):
         corresponding_page = pywikibot.Page(self.site, self.current_page.title.split(":", 1)[1], self.current_page.namespace - 1)
         if not coresponding_page.exists():
-            print("We have a bad talk page - {}".format(self.current_page.title)
+            print("We have a bad talk page - {}".format(self.current_page.title))
         
 
 def main(*args):
