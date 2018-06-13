@@ -120,74 +120,11 @@ class G8PatrolBot(FireflyBot):
         super(G8PatrolBot, self).__init__(generator, **kwargs)
         self.task_number = -2
         self.verbose = self.options.get("verbose")
-    
-    # Gets the article's assessment. If the page has multiple different assessments
-    # then the HIGHEST assessment is used
-    def get_vital_article_quality(self, page_title):
-
-        def sanitise_assessment(ass):  # Hehehe 'ass'. I'm a serious programmer.
-            ass = ass.lower()
-            return ass.split("<!")[0].strip()  # Gets rid of <!-- HTML comments -->
-
-        assessments = []
-        article_page = pywikibot.Page(self.site, page_title)
-        
-         # Pesky redirects
-        if article_page.isRedirectPage():
-            talk_page = pywikibot.Page(self.site, "Talk:{}".format(article_page.getRedirectTarget().title()))
-        else:
-            talk_page = pywikibot.Page(self.site, "Talk:{}".format(page_title))
-        
-        talk_wikicode = mwparserfromhell.parse(talk_page.text)
-        
-        is_dga = False
-        is_ffa = False
-        
-        for template in talk_wikicode.filter_templates():
-            template_name_lower = template.name.lower()
-            
-            if template_name_lower in self.dga_templates:
-                is_dga = True
-            elif template_name_lower in self.article_history_templates:
-                try:
-                    cur_status = template.get("currentstatus").split("=")[1].strip()
-                    is_dga = cur_status.lower() == "dga"
-                    is_ffa = cur_status.lower() == "ffa"
-                except ValueError:
-                    pass
-                continue
-            
-            try:
-                assessment = sanitise_assessment(template.get("class").split("=")[1])
-                if assessment in self.assessment_order:  # Reject invalid assessment classes (e.g. if someone has vandalised the template)
-                    assessments.append(assessment)
-            except ValueError:  # The WikiProject template may not have an assessment parameter
-                continue  # Skip to the next one
-
-        if len(assessments) == 0:
-            if "WikiProject Disambiguation" in talk_page.text:
-                return "dab", False, False
-            else:
-                return "unassessed", False, False
-        elif len(assessments) > 1:
-            assessments.sort(key=lambda x: self.assessment_order.index(x) if x in self.assessment_order else 255)
-        return assessments[0], is_dga, is_ffa
-
-    # The relevant article will be the first link in a line
-    @staticmethod
-    def get_article_link(line):
-        for item in line:
-            if "[[" in item and "<" not in item:
-                bare_name = str(item).strip("[]'")
-                if "|" in bare_name:
-                    return bare_name.split("|")[0]
-                else:
-                    return bare_name
 
     def treat_page(self):
-        corresponding_page = pywikibot.Page(self.site, self.current_page.title.split(":", 1)[1], self.current_page.namespace - 1)
+        corresponding_page = pywikibot.Page(self.site, self.current_page.title().split(":", 1)[1], self.current_page.namespace - 1)
         if not coresponding_page.exists():
-            print("We have a bad talk page - {}".format(self.current_page.title))
+            print("We have a bad talk page - {}".format(self.current_page.title()))
         
 
 def main(*args):
