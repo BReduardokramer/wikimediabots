@@ -114,6 +114,7 @@ class VitalArticlesBot(FireflyBot):
     dga_templates = ["dga", "delistedga"]
     article_history_templates = ["article history", "articlehistory", "articlemilestones", "ah"]
     skip_assessment = False
+    verbose = False
 
     def __init__(self, generator, **kwargs):
         self.availableOptions.update({
@@ -198,9 +199,9 @@ class VitalArticlesBot(FireflyBot):
 
         # Count the articles in each section and update the header accordingly
         for section in wikicode.get_sections(include_lead=False):
-            article_count = section.count("# {{Icon")
+            article_count = section.count("# {{Icon") + section.count("# {{icon")
             if article_count == 0:
-                article_count = section.count("* {{Icon")
+                article_count = section.count("* {{Icon") + section.count("* {{icon")
             old_header_match = re.match(r"(=+)\s*(.+?)\s*[\(:]\s*?([0-9,]+)\s*(?:articles?)?\s*(/\s*[0-9,]+)?\s*(?:articles?| quota)?\)?\s*=+", str(section))
             if old_header_match is None:
                 continue
@@ -208,7 +209,6 @@ class VitalArticlesBot(FireflyBot):
             has_quota = "quota" in str(section)
             old_header_groups = old_header_match.groups()
             use_colon = "current total" in old_header.lower() and ":" in old_header
-            print(old_header)
             new_header = "{0}{1} {6}{2}{4} article{3}{5}{7}{0}".format(old_header_groups[0],
                                                                 old_header_groups[1],
                                                                 article_count,
@@ -219,7 +219,8 @@ class VitalArticlesBot(FireflyBot):
                                                                 "" if use_colon else ")")
 
             new_header = new_header.replace("article quota", "quota")
-            section.replace(old_header_match.group(0), new_header)
+            if old_header_match.group(0).replace(",","") != new_header:
+                section.replace(old_header_match.group(0), new_header)
 
         # Add all the top-level headings together for the 'total articles' count
         total_count = 0
@@ -231,7 +232,7 @@ class VitalArticlesBot(FireflyBot):
                     heading_match = re.search(r"([0-9,]+)\s*(?:articles?)?\s*(/\s*[0-9,]+)?\s*(?:articles?| quota)?\)", heading)
                     if heading_match is None:
                         continue
-                    total_count += int(heading_match.group(1))
+                    total_count += int(heading_match.group(1).replace(",",""))
                 break
 
         # Update the 'total articles' count
@@ -254,8 +255,6 @@ class VitalArticlesBot(FireflyBot):
                     if article_title is None or "Wikipedia:" in article_title or "Category:" in article_title or "User:" in article_title or "Template:" in article_title or "Portal:" in article_title:
                         continue
                     article_assessment, is_dga, is_ffa = self.get_vital_article_quality(article_title)
-                    if self.verbose:
-                        print("Getting assessment for {}: {}, {}, {}".format(article_title, article_assessment, is_dga, is_ffa))
                     
                     count = 0
                     dga_found = False
